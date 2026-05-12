@@ -425,9 +425,15 @@ function hexRgba(h) {
 //  MAP + OVERLAY
 // ─────────────────────────────────────────
 
+function getRealUrl(frame) {
+  // Local server serving real HRRR frames
+  const f = String(frame + 1).padStart(3, '0');
+  return `http://localhost:8888/f${f}.png`;
+}
+
 function renderFrame() {
   if (!map || !map.isStyleLoaded()) return;
-  const url = generateFrame(currentVar, currentFrame);
+  const url = getRealUrl(currentFrame);
   
   // Update or add image source
   if (map.getSource('hrrr-overlay')) {
@@ -526,11 +532,7 @@ function buildTimeline() {
 
 // Pregenerate first few frames in background
 function pregenerate() {
-  setTimeout(() => {
-    for (let i = 1; i <= Math.min(12, TOTAL_FRAMES); i++) {
-      generateFrame(currentVar, i);
-    }
-  }, 500);
+  // Real data — no pregeneration needed
 }
 
 // ─────────────────────────────────────────
