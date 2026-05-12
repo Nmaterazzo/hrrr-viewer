@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>HRRR VIEWER</title>
+<script src='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js'></script>
+<link href='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css' rel='stylesheet'>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#0a0d12;
+  --surface:#111520;
+  --rim:rgba(255,255,255,.07);
+  --sky:#38bdf8;
+  --ember:#f07020;
+  --green:#22c55e;
+  --text:rgba(255,255,255,.9);
+  --muted:rgba(255,255,255,.35);
+  --dim:rgba(255,255,255,.15);
+}
+html,body{height:100%;background:var(--bg);}
+body{font-family:'Barlow Condensed',sans-serif;color:var(--text);overflow:hidden;display:flex;flex-direction:column;}
+
+
+/* MAP */
+#map{flex:1;width:100%;}
+
+/* TOP HEADER BAR */
+#top-bar{
+  position:absolute;top:0;left:0;right:0;z-index:100;
+  display:flex;align-items:center;gap:0;
+  background:rgba(10,13,18,.92);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--rim);
+  padding:0 12px;height:48px;
+}
+#tb-run{
+  font-family:'DM Mono',monospace;font-size:11px;color:var(--sky);
+  line-height:1.3;flex-shrink:0;
+}
+#tb-run span{display:block;color:var(--muted);font-size:9px;}
+#tb-sep{width:1px;background:var(--rim);height:28px;margin:0 12px;flex-shrink:0;}
+#tb-var-label{
+  font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;
+  color:var(--text);flex:1;text-align:center;
+}
+#tb-frame{
+  font-family:'DM Mono',monospace;font-size:11px;color:var(--green);
+  text-align:right;flex-shrink:0;line-height:1.3;
+}
+#tb-frame span{display:block;color:var(--muted);font-size:9px;}
+
+/* FORECAST TIME BADGE */
+#fcst-badge{
+  position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:100;
+  background:rgba(10,13,18,.9);backdrop-filter:blur(12px);
+  border:1px solid rgba(56,189,248,.25);border-radius:20px;
+  padding:6px 16px;text-align:center;pointer-events:none;
+}
+#fcst-badge .fb-main{font-family:'DM Mono',monospace;font-size:12px;color:var(--sky);letter-spacing:.5px;}
+#fcst-badge .fb-sub{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);margin-top:1px;}
+
+/* BOTTOM PANEL */
+#bottom-panel{
+  position:absolute;bottom:0;left:0;right:0;z-index:100;
+  background:rgba(10,13,18,.96);backdrop-filter:blur(20px);
+  border-top:1px solid var(--rim);
+}
+
+/* VAR + MODEL SELECTOR */
+#selector-row{
+  display:flex;align-items:center;gap:6px;
+  padding:8px 12px 6px;overflow-x:auto;scrollbar-width:none;
+}
+#selector-row::-webkit-scrollbar{display:none;}
+.sel-group{display:flex;gap:3px;flex-shrink:0;}
+.sel-pill{
+  font-family:'Barlow Condensed',sans-serif;font-weight:600;
+  font-size:12px;letter-spacing:.5px;padding:5px 11px;border-radius:20px;
+  cursor:pointer;border:1px solid var(--rim);color:var(--muted);
+  transition:all .15s;white-space:nowrap;user-select:none;
+}
+.sel-pill.on{background:var(--sky);border-color:var(--sky);color:#000;}
+.sel-pill.model-pill.on{background:var(--ember);border-color:var(--ember);color:#000;}
+.sel-pill:active{transform:scale(.93);}
+.sel-divider{width:1px;background:var(--rim);flex-shrink:0;margin:0 2px;}
+
+/* LEGEND */
+#legend-row{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 12px 6px;
+}
+#legend-canvas{border-radius:3px;flex-shrink:0;}
+#legend-labels{
+  display:flex;justify-content:space-between;flex:1;
+  font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);
+}
+
+/* TIMELINE BAR (green dots like the screenshot) */
+#timeline-row{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 12px 6px;
+}
+#tl-dots{
+  flex:1;display:flex;gap:2px;align-items:center;position:relative;
+  height:20px;
+}
+.tl-dot{
+  flex:1;height:6px;border-radius:3px;background:var(--green);
+  opacity:.4;cursor:pointer;transition:opacity .1s;
+}
+.tl-dot.active{opacity:1;background:var(--sky);}
+.tl-dot.past{opacity:.7;}
+#tl-thumb{
+  position:absolute;top:50%;transform:translate(-50%,-50%);
+  width:16px;height:16px;border-radius:50%;background:var(--sky);
+  box-shadow:0 0 12px rgba(56,189,248,.7);pointer-events:none;
+  transition:left .1s;
+}
+
+/* CONTROLS ROW */
+#controls-row{
+  display:flex;align-items:center;justify-content:center;gap:16px;
+  padding:6px 12px 10px;
+}
+.ctrl-btn{
+  background:none;border:none;color:var(--muted);cursor:pointer;
+  font-size:20px;padding:4px 8px;transition:color .15s;
+}
+.ctrl-btn:hover{color:var(--text);}
+.ctrl-btn:active{transform:scale(.9);}
+#play-btn{
+  width:52px;height:52px;border-radius:50%;
+  background:var(--sky);color:#000;border:none;
+  font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 20px rgba(56,189,248,.4);transition:all .15s;
+}
+#play-btn:active{transform:scale(.93);}
+#play-btn.playing{background:#f87171;box-shadow:0 0 20px rgba(248,113,113,.4);}
+</style>
+</head>
+<body>
+
+<div id="top-bar">
+  <div id="tb-run">HRRR<span>05/12 12Z</span></div>
+  <div id="tb-sep"></div>
+  <div id="tb-var-label">PRECIPITATION</div>
+  <div id="tb-sep" style="margin:0 12px;"></div>
+  <div id="tb-frame">+F000<span>100% (48/48)</span></div>
+</div>
+
+<div id="fcst-badge">
+  <div class="fb-main" id="badge-main">F000 Tue 05/12/26 12:00 PM</div>
+  <div class="fb-sub" id="badge-sub">Updated: 12:57 PM</div>
+</div>
+
+<div id="map"></div>
+
+<div id="bottom-panel">
+  <!-- var + model selectors -->
+  <div id="selector-row">
+    <div class="sel-group" id="var-pills">
+      <div class="sel-pill on"    onclick="setVar('precip',this)">PRECIP TYPE</div>
+      <div class="sel-pill"       onclick="setVar('precip_rate',this)">PRECIP RATE</div>
+      <div class="sel-pill"       onclick="setVar('temp',this)">TEMPERATURE</div>
+      <div class="sel-pill"       onclick="setVar('wind',this)">WIND</div>
+      <div class="sel-pill"       onclick="setVar('cape',this)">CAPE</div>
+      <div class="sel-pill"       onclick="setVar('reflectivity',this)">REFLECTIVITY</div>
+    </div>
+    <div class="sel-divider" style="height:24px;"></div>
+    <div class="sel-group" id="model-pills">
+      <div class="sel-pill model-pill on" onclick="setModel('hrrr',this)">HRRR</div>
+      <div class="sel-pill model-pill"    onclick="setModel('hrrr_subh',this)">HRRR 15MIN</div>
+      <div class="sel-pill model-pill"    onclick="setModel('gfs',this)">GFS</div>
+    </div>
+    <div class="sel-divider" style="height:24px;"></div>
+    <div class="sel-group" id="run-pills">
+      <div class="sel-pill model-pill on" onclick="setRun('12Z',this)">12Z</div>
+      <div class="sel-pill model-pill"    onclick="setRun('06Z',this)">06Z</div>
+      <div class="sel-pill model-pill"    onclick="setRun('00Z',this)">00Z</div>
+    </div>
+  </div>
+
+  <!-- legend -->
+  <div id="legend-row">
+    <canvas id="legend-canvas" width="200" height="10"></canvas>
+    <div id="legend-labels"></div>
+  </div>
+
+  <!-- timeline dots -->
+  <div id="timeline-row">
+    <div id="tl-dots">
+      <div id="tl-thumb"></div>
+    </div>
+  </div>
+
+  <!-- playback controls -->
+  <div id="controls-row">
+    <button class="ctrl-btn" onclick="stepFrame(-5)" title="Back 5">⏮</button>
+    <button class="ctrl-btn" onclick="stepFrame(-1)" title="Back 1">◀</button>
+    <button id="play-btn" onclick="togglePlay()">▶</button>
+    <button class="ctrl-btn" onclick="stepFrame(1)" title="Fwd 1">▶</button>
+    <button class="ctrl-btn" onclick="stepFrame(5)" title="Fwd 5">⏭</button>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────
+//  MOCK DATA ENGINE
+//  Generates realistic HRRR-style precip cells
+//  using Gaussian blobs + temporal evolution
+// ─────────────────────────────────────────
+
+const RUN_DATE = '2026-05-12';
+const RUN_HOUR = 12; // 12Z
+const TOTAL_FRAMES = 48;
+const FRAME_INTERVAL_MIN = 60; // 60 min = hourly, change to 15 for subhourly
+
+// Florida / SE US domain
+const DOMAIN = {
+  minLat: 24.5, maxLat: 36.0,
+  minLon: -88.0, maxLon: -76.0,
+};
+const GRID_RES = 64; // grid cells in each direction for mock data
+
+// Variable configs
+const VARS = {
+  precip: {
+    label: 'PRECIPITATION TYPE',
+    unit: 'in/hr',
+    stops: [0, 0.01, 0.1, 0.25, 0.5, 1.0, 2.0],
+    colors: ['#00000000','#00ff00','#009900','#ffff00','#ff9900','#ff0000','#ff00ff'],
+  },
+  precip_rate: {
+    label: 'PRECIP RATE',
+    unit: 'in/hr',
+    stops: [0, 0.01, 0.1, 0.5, 1.0, 2.0, 4.0],
+    colors: ['#00000000','#38bdf8','#818cf8','#a855f7','#ec4899','#ef4444','#7f1d1d'],
+  },
+  temp: {
+    label: 'TEMPERATURE 2M',
+    unit: '°F',
+    stops: [30, 50, 60, 70, 80, 90, 100],
+    colors: ['#1e3a8a','#38bdf8','#34d399','#84cc16','#fbbf24','#f97316','#ef4444'],
+  },
+  wind: {
+    label: 'WIND SPEED 10M',
+    unit: 'mph',
+    stops: [0, 5, 10, 20, 30, 45, 60],
+    colors: ['#0f172a','#334155','#38bdf8','#34d399','#fbbf24','#f97316','#ef4444'],
+  },
+  cape: {
+    label: 'CAPE',
+    unit: 'J/kg',
+    stops: [0, 250, 500, 1000, 2000, 3500, 5000],
+    colors: ['#00000000','#fef9c3','#fbbf24','#f97316','#ef4444','#9b1c1c','#4c0519'],
+  },
+  reflectivity: {
+    label: 'COMPOSITE REFLECTIVITY',
+    unit: 'dBZ',
+    stops: [0, 15, 25, 35, 45, 55, 65],
+    colors: ['#00000000','#38bdf8','#22c55e','#fbbf24','#f97316','#ef4444','#ff00ff'],
+  },
+};
+
+// State
+let map = null;
+let currentVar = 'precip';
+let currentModel = 'hrrr';
+let currentRun = '12Z';
+let currentFrame = 0;
+let playing = false;
+let playTimer = null;
+let frameCache = {}; // cached generated PNG URLs per [var][frame]
+let renderScheduled = false;
+
+// Seeded random for reproducible mock data
+function seededRand(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+}
+
+// Generate a single frame of mock data as a canvas PNG
+function generateFrame(varKey, frame) {
+  const cacheKey = `${varKey}_${currentModel}_${frame}`;
+  if (frameCache[cacheKey]) return frameCache[cacheKey];
+
+  const cfg = VARS[varKey];
+  const W = GRID_RES * 4, H = GRID_RES * 4; // render at 4x for smoothness
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(W, H);
+  const data = img.data;
+
+  // Generate value at each pixel
+  const isSubhourly = currentModel === 'hrrr_subh';
+  const timeRand = seededRand(frame * 7 + varKey.charCodeAt(0) * 3);
+  
+  // Define storm cells — they evolve over time
+  const numCells = varKey === 'temp' || varKey === 'wind' || varKey === 'cape' ? 0 : 8;
+  const cells = [];
+  
+  if (varKey === 'precip' || varKey === 'precip_rate' || varKey === 'reflectivity') {
+    // Florida convection pattern — storms move NE
+    const baseRand = seededRand(42); // fixed seed for base positions
+    for (let i = 0; i < 10; i++) {
+      const baseLat = 27 + baseRand() * 6;
+      const baseLon = -87 + baseRand() * 10;
+      const size = 0.8 + baseRand() * 2.5;
+      const intensity = 0.3 + baseRand() * 1.0;
+      const phase = baseRand() * Math.PI * 2;
+      const lifespan = 12 + baseRand() * 30; // frames alive
+      const birthFrame = Math.floor(baseRand() * 20);
+      
+      // Storm motion: ~20kt NE = ~0.07° lat/hr, ~0.09° lon/hr
+      const speed = (isSubhourly ? 0.25 : 1.0);
+      const lat = baseLat + (frame - birthFrame) * 0.07 * speed;
+      const lon = baseLon + (frame - birthFrame) * 0.09 * speed;
+      const age = frame - birthFrame;
+      const alive = age >= 0 && age < lifespan;
+      const strength = alive ? Math.sin((age / lifespan) * Math.PI) * intensity : 0;
+      
+      if (strength > 0.05) {
+        cells.push({ lat, lon, size, strength });
+        // Add embedded intense core
+        if (strength > 0.4) {
+          cells.push({ lat: lat + 0.1, lon: lon + 0.1, size: size * 0.3, strength: strength * 1.8 });
+        }
+      }
+    }
+  }
+
+  // Render pixels
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      // Map pixel to lat/lon
+      const lat = DOMAIN.maxLat - (py / H) * (DOMAIN.maxLat - DOMAIN.minLat);
+      const lon = DOMAIN.minLon + (px / W) * (DOMAIN.maxLon - DOMAIN.minLon);
+      
+      let val = 0;
+      
+      if (varKey === 'temp') {
+        // Temperature: warm south, cool north, diurnal cycle
+        const baseTempF = 68 + (DOMAIN.maxLat - lat) * 2.2;
+        const diurnal = Math.sin((frame / 24) * Math.PI * 2 - Math.PI / 2) * 8;
+        const coastal = Math.abs(lon - (-82)) < 1.5 ? -3 : 0; // sea breeze
+        val = baseTempF + diurnal + coastal + (seededRand(px * 7 + py * 13)() - 0.5) * 2;
+      } else if (varKey === 'wind') {
+        val = 5 + (DOMAIN.maxLat - lat) * 0.8 + Math.sin(frame * 0.2) * 3
+            + (seededRand(px * 3 + py * 5 + frame)() - 0.5) * 4;
+      } else if (varKey === 'cape') {
+        // CAPE highest in afternoon over land
+        const diurnal = Math.max(0, Math.sin((frame / 24) * Math.PI * 2 - 1.0));
+        const inland = Math.abs(lon - (-82)) > 2 ? 1.2 : 0.3;
+        val = diurnal * inland * (2000 + seededRand(px * 11 + py * 7)() * 2000);
+        if (lat < 26) val *= 0.4; // less CAPE south Florida
+      } else {
+        // Precip/reflectivity from cells
+        for (const cell of cells) {
+          const dlat = (lat - cell.lat) / cell.size;
+          const dlon = (lon - cell.lon) / (cell.size * 1.4);
+          const dist2 = dlat * dlat + dlon * dlon;
+          const gauss = Math.exp(-dist2 * 2.5);
+          val += gauss * cell.strength;
+        }
+        if (varKey === 'reflectivity') val = val * 55; // scale to dBZ
+      }
+
+      if (val <= 0 && (varKey === 'precip' || varKey === 'precip_rate' || varKey === 'reflectivity')) continue;
+      
+      const col = colorMap(cfg.stops, cfg.colors, val);
+      if (!col || col[3] < 8) continue;
+      const idx = (py * W + px) * 4;
+      data[idx] = col[0]; data[idx+1] = col[1]; data[idx+2] = col[2]; data[idx+3] = col[3];
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  
+  // Blur for smooth appearance
+  const blurred = document.createElement('canvas');
+  blurred.width = W; blurred.height = H;
+  const bctx = blurred.getContext('2d');
+  bctx.filter = 'blur(4px)';
+  bctx.drawImage(canvas, 0, 0);
+
+  const url = blurred.toDataURL('image/png');
+  frameCache[cacheKey] = url;
+  return url;
+}
+
+// Color mapping
+function colorMap(stops, colors, val) {
+  const n = stops.length;
+  if (val <= stops[0]) return hexRgba(colors[0]);
+  if (val >= stops[n-1]) return hexRgba(colors[n-1]);
+  for (let i = 0; i < n-1; i++) {
+    if (val >= stops[i] && val <= stops[i+1]) {
+      const t = (val - stops[i]) / (stops[i+1] - stops[i]);
+      const a = hexRgba(colors[i]), b = hexRgba(colors[i+1]);
+      return [
+        Math.round(a[0]+(b[0]-a[0])*t),
+        Math.round(a[1]+(b[1]-a[1])*t),
+        Math.round(a[2]+(b[2]-a[2])*t),
+        Math.round(a[3]+(b[3]-a[3])*t),
+      ];
+    }
+  }
+  return hexRgba(colors[n-1]);
+}
+
+function hexRgba(h) {
+  if (!h || h === '#00000000') return [0,0,0,0];
+  h = h.replace('#','');
+  if (h.length === 8) return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16),parseInt(h.slice(6,8),16)];
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16),255];
+}
+
+// ─────────────────────────────────────────
+//  MAP + OVERLAY
+// ─────────────────────────────────────────
+
+function renderFrame() {
+  if (!map || !map.isStyleLoaded()) return;
+  const url = generateFrame(currentVar, currentFrame);
+  
+  // Update or add image source
+  if (map.getSource('hrrr-overlay')) {
+    map.getSource('hrrr-overlay').updateImage({ url });
+  } else {
+    map.addSource('hrrr-overlay', {
+      type: 'image',
+      url,
+      coordinates: [
+        [DOMAIN.minLon, DOMAIN.maxLat],
+        [DOMAIN.maxLon, DOMAIN.maxLat],
+        [DOMAIN.maxLon, DOMAIN.minLat],
+        [DOMAIN.minLon, DOMAIN.minLat],
+      ]
+    });
+    map.addLayer({
+      id: 'hrrr-layer',
+      type: 'raster',
+      source: 'hrrr-overlay',
+      paint: {
+        'raster-opacity': 0.85,
+        'raster-resampling': 'linear', // Mapbox GPU bilinear — key to smoothness
+      }
+    });
+  }
+
+  updateUI();
+}
+
+function updateUI() {
+  const cfg = VARS[currentVar];
+  
+  // Top bar
+  document.getElementById('tb-run').innerHTML = `${currentModel.toUpperCase().replace('_SUBH',' 15MIN')}<span>${RUN_DATE.slice(5)} ${currentRun}</span>`;
+  document.getElementById('tb-var-label').textContent = cfg.label;
+  const fStr = `+F${String(currentFrame).padStart(3,'0')}`;
+  document.getElementById('tb-frame').innerHTML = `${fStr}<span>100% (48/48)</span>`;
+  
+  // Forecast badge
+  const dt = new Date(2026, 4, 12, RUN_HOUR + currentFrame);
+  const main = `F${String(currentFrame).padStart(3,'0')} ${dt.toLocaleDateString([],{weekday:'short',month:'2-digit',day:'2-digit',year:'2-digit'})} ${dt.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;
+  document.getElementById('badge-main').textContent = main;
+  document.getElementById('badge-sub').textContent = `Updated: ${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;
+
+  // Timeline dots
+  const dots = document.querySelectorAll('.tl-dot');
+  dots.forEach((d,i) => {
+    d.classList.toggle('active', i === currentFrame);
+    d.classList.toggle('past', i < currentFrame);
+  });
+  // Thumb position
+  const thumb = document.getElementById('tl-thumb');
+  const dotsEl = document.getElementById('tl-dots');
+  if (thumb && dotsEl && TOTAL_FRAMES > 1) {
+    const pct = currentFrame / (TOTAL_FRAMES - 1);
+    thumb.style.left = `calc(${pct * 100}% )`;
+  }
+
+  // Legend
+  drawLegend();
+}
+
+function drawLegend() {
+  const cfg = VARS[currentVar];
+  const canvas = document.getElementById('legend-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const grad = ctx.createLinearGradient(0,0,w,0);
+  cfg.colors.forEach((col, i) => {
+    const c = col === '#00000000' ? 'transparent' : col;
+    grad.addColorStop(i/(cfg.colors.length-1), c);
+  });
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,w,h);
+  
+  const labEl = document.getElementById('legend-labels');
+  labEl.innerHTML = cfg.stops.map(v => `<span>${v}</span>`).join('');
+}
+
+function buildTimeline() {
+  const container = document.getElementById('tl-dots');
+  // Remove old dots (keep thumb)
+  container.querySelectorAll('.tl-dot').forEach(d => d.remove());
+  for (let i = 0; i < TOTAL_FRAMES; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'tl-dot' + (i === currentFrame ? ' active' : i < currentFrame ? ' past' : '');
+    dot.onclick = () => { seekFrame(i); };
+    container.appendChild(dot);
+  }
+  // Move thumb to end of container so it renders on top
+  const thumb = document.getElementById('tl-thumb');
+  container.appendChild(thumb);
+}
+
+// Pregenerate first few frames in background
+function pregenerate() {
+  setTimeout(() => {
+    for (let i = 1; i <= Math.min(12, TOTAL_FRAMES); i++) {
+      generateFrame(currentVar, i);
+    }
+  }, 500);
+}
+
+// ─────────────────────────────────────────
+//  CONTROLS
+// ─────────────────────────────────────────
+
+function seekFrame(f) {
+  currentFrame = Math.max(0, Math.min(TOTAL_FRAMES - 1, f));
+  renderFrame();
+}
+
+function stepFrame(delta) {
+  seekFrame(currentFrame + delta);
+}
+
+function togglePlay() {
+  playing = !playing;
+  const btn = document.getElementById('play-btn');
+  if (playing) {
+    btn.textContent = '⏸';
+    btn.classList.add('playing');
+    const interval = currentModel === 'hrrr_subh' ? 200 : 600;
+    playTimer = setInterval(() => {
+      if (currentFrame >= TOTAL_FRAMES - 1) {
+        seekFrame(0);
+      } else {
+        stepFrame(1);
+      }
+    }, interval);
+  } else {
+    btn.textContent = '▶';
+    btn.classList.remove('playing');
+    clearInterval(playTimer);
+    playTimer = null;
+  }
+}
+
+function setVar(v, el) {
+  currentVar = v;
+  frameCache = {}; // clear cache when var changes
+  document.querySelectorAll('#var-pills .sel-pill').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('tb-var-label').textContent = VARS[v].label;
+  renderFrame();
+}
+
+function setModel(m, el) {
+  currentModel = m;
+  frameCache = {};
+  document.querySelectorAll('#model-pills .sel-pill').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  // Update run pills
+  const runPills = document.getElementById('run-pills');
+  if (m === 'hrrr' || m === 'hrrr_subh') {
+    runPills.innerHTML = ['12Z','11Z','10Z','09Z','06Z','00Z'].map((r,i) =>
+      `<div class="sel-pill model-pill${i===0?' on':''}" onclick="setRun('${r}',this)">${r}</div>`
+    ).join('');
+  } else {
+    runPills.innerHTML = ['12Z','06Z','00Z','18Z'].map((r,i) =>
+      `<div class="sel-pill model-pill${i===0?' on':''}" onclick="setRun('${r}',this)">${r}</div>`
+    ).join('');
+  }
+  currentRun = m === 'hrrr' || m === 'hrrr_subh' ? '12Z' : '12Z';
+  renderFrame();
+}
+
+function setRun(r, el) {
+  currentRun = r;
+  frameCache = {};
+  document.querySelectorAll('#run-pills .sel-pill').forEach(p => p.classList.remove('on'));
+  el.classList.add('on');
+  renderFrame();
+}
+
+// ─────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────
+
+const MAPBOX_TOKEN = 'pk.eyJ1Ijoibm1hdGVyYXp6byIsImEiOiJjbXAydnU1ZXIwazhkMnhweXZsd2F3Y2cyIn0.IjvtLXZ_csLKNWr3wc6Q0w';
+
+function startMap(token) {
+  mapboxgl.accessToken = token;
+  map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/dark-v11',
+    center: [-82.5, 29.5],
+    zoom: 6,
+    attributionControl: true,
+  });
+
+  map.on('load', () => {
+    buildTimeline();
+    renderFrame();
+    pregenerate();
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight') stepFrame(1);
+      if (e.key === 'ArrowLeft') stepFrame(-1);
+      if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+    });
+  });
+
+  // Touch drag on timeline
+  const dotsEl = document.getElementById('tl-dots');
+  function handleTimelineDrag(e) {
+    const rect = dotsEl.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const pct = Math.max(0, Math.min(1, x / rect.width));
+    seekFrame(Math.round(pct * (TOTAL_FRAMES - 1)));
+  }
+  dotsEl.addEventListener('mousedown', e => {
+    handleTimelineDrag(e);
+    const move = e2 => handleTimelineDrag(e2);
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', () => document.removeEventListener('mousemove', move), {once:true});
+  });
+  dotsEl.addEventListener('touchstart', handleTimelineDrag, {passive:true});
+  dotsEl.addEventListener('touchmove', handleTimelineDrag, {passive:true});
+}
+
+// Auto-start with baked token
+window.addEventListener('load', () => startMap(MAPBOX_TOKEN));
+</script>
+</body>
+</html>
